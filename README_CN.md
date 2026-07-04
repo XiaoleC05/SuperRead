@@ -1,59 +1,79 @@
-# SuperRead — AI 资讯简报
+# SuperRead
 
-> 订阅你的信息源，AI 每日自动汇总。五分钟掌握当日动态。
+订阅 RSS 信息源，AI 自动汇总为每日简报。五分钟浏览当日全部更新摘要。
 
-## 背景
+## Features
 
-关注技术新闻、行业博客和开发者动态，意味着要浏览数十个网站，或在 RSS 阅读器中面对成百上千篇未读文章。大多数情况下，用户只需要摘要，而非全文。
+- 添加 RSS 源，支持 OPML 批量导入
+- 定时抓取（默认每 30 分钟），检测新文章
+- 使用大模型将文章浓缩为单句摘要
+- 每日简报汇总全部来源的更新
+- 多来源报道同一事件时自动去重合并
+- 已读/未读、星标收藏、标签分类、稍后阅读
+- 平台内通知，可选邮件推送
 
-SuperRead 围绕"RSS 订阅 + AI 摘要 + 每日简报"的核心链路：定时抓取订阅源的新内容，通过大模型将每篇文章浓缩为一句话摘要，汇总成每日简报。阅读摘要仅需数分钟，感兴趣的再点击原文链接。
+## Architecture
 
-## 功能
+```text
+Browser
+  ↓
+React Frontend (Oxelia51 unified UI)
+  ↓
+Go Backend
+  ├── RSS Fetcher (periodic cron jobs)
+  ├── LLM Summarizer (user-provided API key)
+  └── Dedup Engine
+  ↓
+PostgreSQL / SQLite (feeds, articles, user data)
+```
 
-| 功能 | 说明 |
-|------|------|
-| **信息源管理** | 添加 RSS 源、自动发现网站订阅、OPML 导入 |
-| **定时抓取** | 后台每30分钟自动拉取最新内容 |
-| **AI 摘要** | 每篇文章浓缩为一句话摘要 |
-| **每日简报** | 当日全部来源的更新汇总在一个页面上 |
-| **智能去重** | 多个来源报道同一事件时自动合并 |
-| **阅读管理** | 已读/未读、星标收藏、标签分类、稍后阅读 |
-| **通知推送** | 平台内通知 + 可选邮件推送 |
-| **原文链接** | 每条摘要附带原文链接 |
+在线版运行于 Oxelia51 平台。Go 后端的 cron 调度器定时抓取 RSS 源，去重引擎合并重复内容，大模型总结由用户提供的 API Key 驱动。桌面版使用 SQLite 存储。
 
-## 多用户
+## Requirements
 
-面向所有平台用户，每人独立订阅和简报。纯阅读工具，无社交功能。
+- 在线版：Oxelia51 平台（Go + PostgreSQL + React）
+- 桌面版：独立可执行文件，无需运行时依赖
+- 大模型 API Key（OpenAI、Anthropic 等）
 
-## 技术栈
+## Installation
 
-| 环境 | 后端 | 数据库 | 前端 |
-|------|------|--------|------|
-| 在线（Oxelia51） | Go + cron | PostgreSQL | React |
-| 桌面（exe） | Go + cron | SQLite | 内嵌 React |
+### 桌面版
 
-- 定时任务使用 Go 内置 cron
-- AI 摘要使用用户自带的大模型 API Key
+从 [GitHub Releases](https://github.com/XiaoleC05/SuperRead/releases) 下载 `SuperRead.exe`。
 
-## 费用说明
+### 在线版
 
-AI 摘要功能需要用户提供自己的大模型 API Key，Key 仅存储在本地。可通过调整抓取频率和摘要长度控制 API 费用。
+在线版集成于 Oxelia51 平台，参见 [Oxelia51 部署指南](https://github.com/XiaoleC05/Oxelia51)。
 
-## 使用方式
+## Usage
 
 ### 在线
 
-1. 访问 [oxelia51.com](https://oxelia51.com) 注册登录
-2. 从工具菜单打开 SuperRead
-3. 添加 RSS 来源，填入 API Key
-4. 每天查看简报
+1. 访问 [oxelia51.com](https://oxelia51.com) 注册并登录
+2. 进入 SuperRead 工具页
+3. 添加 RSS 来源，在设置中填入大模型 API Key
+4. 每日查看 AI 生成的简报
 
 ### 桌面
 
-1. 从 [GitHub Releases](https://github.com/XiaoleC05/SuperRead/releases) 下载 `SuperRead.exe`
-2. 双击运行
-3. 添加来源和 API Key，全部在本地运行
+1. 双击 `SuperRead.exe` 启动
+2. 添加 RSS 来源和 API Key，所有数据存储在本地
 
-## 开发状态
+## Roadmap
 
-概念阶段，尚未开发。
+- [ ] RSS 源管理与抓取
+- [ ] AI 摘要生成
+- [ ] 每日简报展示
+- [ ] 智能去重
+
+## Contributing
+
+1. Fork 本仓库
+2. 创建功能分支 (`git checkout -b feature/xxx`)
+3. 提交变更 (`git commit -m 'Add xxx'`)
+4. 推送分支 (`git push origin feature/xxx`)
+5. 提交 Pull Request
+
+## License
+
+This project is licensed under the MIT License.

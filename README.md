@@ -1,59 +1,79 @@
-# SuperRead — AI-Powered News Briefing
+# SuperRead
 
-> Subscribe to your favorite sources. Get an AI-summarized daily brief. Spend 5 minutes instead of 2 hours.
-
-## Why SuperRead?
-
-Keeping up with tech news, industry blogs, and developer updates means checking dozens of sites — or drowning in an RSS reader with hundreds of unread articles. You don't need every full article; you need to know what happened today.
-
-**SuperRead** subscribes to the sources you care about, fetches new content on a schedule, and uses AI to summarize everything into a concise daily briefing. Read the summaries in minutes. Click through to the original only when something matters.
+Subscribe to RSS feeds. Let AI summarize everything into a daily briefing. Five minutes to scan all your sources.
 
 ## Features
 
-| Feature | What It Does |
-|---------|-------------|
-| **Source Management** | Add RSS feeds, auto-discover feeds from URLs, or import your OPML file |
-| **Scheduled Fetching** | Background updates every 30 minutes — always fresh |
-| **AI Summarization** | Each article distilled into a one-sentence summary |
-| **Daily Briefing** | All of today's updates from all sources, in one scrollable feed |
-| **Smart Deduplication** | Same story from multiple sources? Merged into one entry |
-| **Reading Management** | Mark as read/unread, star favorites, tag categories, save for later |
-| **Notifications** | Platform alerts + optional email digests when new content arrives |
-| **Original Links** | Every summary includes a link to the full article |
+- Add RSS feeds with OPML batch import support
+- Scheduled fetching every 30 minutes to detect new articles
+- LLM-powered single-sentence summarization for each article
+- Daily briefing aggregating updates from all sources
+- Smart deduplication when multiple sources cover the same event
+- Read/unread tracking, favorites, tag categories, read-later
+- Platform notifications and optional email digests
 
-## Multi-User
+## Architecture
 
-Each user has their own independent subscription list and briefing feed. No social features — this is a pure reading tool.
+```text
+Browser
+  ↓
+React Frontend (Oxelia51 unified UI)
+  ↓
+Go Backend
+  ├── RSS Fetcher (periodic cron jobs)
+  ├── LLM Summarizer (user-provided API key)
+  └── Dedup Engine
+  ↓
+PostgreSQL / SQLite (feeds, articles, user data)
+```
 
-## Tech Stack
+The online version runs on the Oxelia51 platform. The scheduler periodically fetches RSS sources, the dedup engine merges duplicate content, and the LLM summarizer uses the user's own API key. The desktop version uses SQLite for storage.
 
-| Environment | Backend | Database | Frontend | Special |
-|-------------|---------|----------|----------|---------|
-| Online (Oxelia51) | Go + cron | PostgreSQL | React | RSS parser + LLM API |
-| Desktop (exe) | Go + cron | SQLite | Embedded React | Same, packaged as exe |
+## Requirements
 
-- Scheduled fetching uses Go's built-in cron — no external scheduler
-- AI summarization requires your own API key from any supported provider
+- Online: Oxelia51 platform (Go, PostgreSQL, React)
+- Desktop: standalone executable, no runtime dependencies
+- LLM API key (OpenAI, Anthropic, or compatible providers)
 
-## API Key
+## Installation
 
-SuperRead uses your own LLM API key for summarization. The key is stored locally. You control the cost — adjust fetch frequency and summary length to fit your budget.
+### Desktop
 
-## Getting Started
+Download `SuperRead.exe` from [GitHub Releases](https://github.com/XiaoleC05/SuperRead/releases).
 
-### Online (via Oxelia51)
+### Online
 
-1. Visit [oxelia51.com](https://oxelia51.com) and sign in
+Integrated into the Oxelia51 platform. See [Oxelia51 deployment guide](https://github.com/XiaoleC05/Oxelia51).
+
+## Usage
+
+### Online
+
+1. Visit [oxelia51.com](https://oxelia51.com), register and sign in
 2. Open SuperRead from the tools menu
-3. Add your RSS sources and enter your API key
-4. Check back for your daily briefing
+3. Add RSS sources and enter your LLM API key in settings
+4. Check back daily for your AI-generated briefing
 
-### Desktop (exe)
+### Desktop
 
-1. Download `SuperRead.exe` from [GitHub Releases](https://github.com/XiaoleC05/SuperRead/releases)
-2. Run the executable — starts a local web interface
-3. Add sources, enter API key, everything runs locally
+1. Double-click `SuperRead.exe` to start
+2. Add RSS sources and API key. All data is stored locally.
 
-## Status
+## Roadmap
 
-Concept phase. Development not yet started.
+- [ ] RSS source management and fetching
+- [ ] AI summarization
+- [ ] Daily briefing display
+- [ ] Smart deduplication
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/xxx`)
+3. Commit your changes (`git commit -m 'Add xxx'`)
+4. Push the branch (`git push origin feature/xxx`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License.
