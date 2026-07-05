@@ -1,0 +1,8 @@
+{
+  "slug": "superread",
+  "name": "SuperRead",
+  "description": "RSS 订阅与 AI 简报",
+  "online_capable": true,
+  "github_repo": "XiaoleC05/SuperRead",
+  "release_url": "https://github.com/XiaoleC05/SuperRead/releases"
+}
