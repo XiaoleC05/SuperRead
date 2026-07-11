@@ -1,12 +1,12 @@
 # SuperRead
 
-Subscribe to RSS feeds. Let AI summarize everything into a daily briefing. Five minutes to scan all your sources.
+Subscribe to RSS feeds. Auto-summarize everything into a daily briefing.
 
 ## Features
 
 - Add RSS feeds with OPML batch import support
 - Scheduled fetching every 30 minutes to detect new articles
-- LLM-powered single-sentence summarization for each article
+- One-sentence summarization for each article
 - Daily briefing aggregating updates from all sources
 - Smart deduplication when multiple sources cover the same event
 - Read/unread tracking, favorites, tag categories, read-later
@@ -21,19 +21,19 @@ React Frontend (Oxelia51 unified UI)
   ↓
 Go Backend
   ├── RSS Fetcher (periodic cron jobs)
-  ├── LLM Summarizer (user-provided API key)
+  ├── Summarizer (user-provided API key)
   └── Dedup Engine
   ↓
 PostgreSQL / SQLite (feeds, articles, user data)
 ```
 
-The online version runs on the Oxelia51 platform. The scheduler periodically fetches RSS sources, the dedup engine merges duplicate content, and the LLM summarizer uses the user's own API key. The desktop version uses SQLite for storage.
+The online version runs on the Oxelia51 platform. The scheduler periodically fetches RSS sources, the dedup engine merges duplicate content, and the summarizer uses the user's own API key. The desktop version uses SQLite for storage.
 
 ## Requirements
 
 - Online: Oxelia51 platform (Go, PostgreSQL, React)
 - Desktop: standalone executable, no runtime dependencies
-- LLM API key (OpenAI, Anthropic, or compatible providers)
+- API key for external model access
 
 ## Installation
 
@@ -51,8 +51,8 @@ Integrated into the Oxelia51 platform. See [Oxelia51 deployment guide](https://g
 
 1. Visit [oxelia51.com](https://oxelia51.com), register and sign in
 2. Open SuperRead from the tools menu
-3. Add RSS sources and enter your LLM API key in settings
-4. Check back daily for your AI-generated briefing
+3. Add RSS sources and enter your API key in settings
+4. Check back daily for your briefing
 
 ### Desktop
 
@@ -62,7 +62,7 @@ Integrated into the Oxelia51 platform. See [Oxelia51 deployment guide](https://g
 ## Roadmap
 
 - [ ] RSS source management and fetching
-- [ ] AI summarization
+- [ ] Summarization
 - [ ] Daily briefing display
 - [ ] Smart deduplication
 
