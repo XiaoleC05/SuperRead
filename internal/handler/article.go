@@ -43,7 +43,7 @@ func ListArticles(c *gin.Context) {
 
 	articles, err := db.ListArticles(c.Request.Context(), userID, feedID, starred, tag, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, err)
 		return
 	}
 
@@ -75,7 +75,7 @@ func UpdateArticle(c *gin.Context) {
 
 	article, err := db.UpdateArticle(c.Request.Context(), id, userID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, err)
 		return
 	}
 

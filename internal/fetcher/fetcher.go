@@ -2,32 +2,61 @@ package fetcher
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/XiaoleC05/SuperRead/internal/db"
 	"github.com/XiaoleC05/SuperRead/internal/model"
+	"github.com/XiaoleC05/SuperRead/internal/summarizer"
 	"github.com/mmcdole/gofeed"
 )
 
+const maxRSSBodyBytes = 10 * 1024 * 1024
+
 type Fetcher struct {
-	parser *gofeed.Parser
+	parser     *gofeed.Parser
+	summarizer *summarizer.Summarizer
 }
 
 func New() *Fetcher {
 	return &Fetcher{
-		parser: gofeed.NewParser(),
+		parser:     gofeed.NewParser(),
+		summarizer: summarizer.New(),
 	}
 }
 
 func (f *Fetcher) FetchFeed(ctx context.Context, feed *model.Feed) (int, error) {
 	fp := gofeed.NewParser()
-	fp.Client.Timeout = 30 * time.Second
+	if fp.Client == nil {
+		fp.Client = &http.Client{Timeout: 30 * time.Second}
+	} else {
+		fp.Client.Timeout = 30 * time.Second
+	}
 
-	parsed, err := fp.ParseURL(feed.FeedURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feed.FeedURL, nil)
 	if err != nil {
 		return 0, err
 	}
+
+	resp, err := fp.Client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, fmt.Errorf("unexpected HTTP status: %d", resp.StatusCode)
+	}
+
+	parsed, err := fp.Parse(io.LimitReader(resp.Body, maxRSSBodyBytes))
+	if err != nil {
+		return 0, err
+	}
+
+	settings, _ := db.GetSettings(ctx, feed.UserID)
 
 	added := 0
 	for _, item := range parsed.Items {
@@ -49,11 +78,28 @@ func (f *Fetcher) FetchFeed(ctx context.Context, feed *model.Feed) (int, error) 
 			article.PublishedAt = item.PublishedParsed
 		}
 
-		if err := db.CreateArticle(ctx, article); err != nil {
+		articleID, err := db.CreateArticle(ctx, article)
+		if err != nil {
 			log.Printf("Failed to create article: %v", err)
 			continue
 		}
+		if articleID == 0 {
+			continue
+		}
+
 		added++
+		article.ID = articleID
+
+		if settings != nil && settings.APIKey != "" && settings.APIBase != "" {
+			summary, sumErr := f.summarizer.Summarize(ctx, settings, article)
+			if sumErr != nil {
+				log.Printf("Failed to summarize article %d: %v", articleID, sumErr)
+			} else if summary != "" {
+				if err := db.UpdateArticleSummary(ctx, articleID, summary); err != nil {
+					log.Printf("Failed to save summary for article %d: %v", articleID, err)
+				}
+			}
+		}
 	}
 
 	return added, nil

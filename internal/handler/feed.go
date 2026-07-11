@@ -18,7 +18,7 @@ func ListFeeds(c *gin.Context) {
 
 	feeds, err := db.ListFeeds(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, err)
 		return
 	}
 
@@ -43,7 +43,7 @@ func CreateFeed(c *gin.Context) {
 
 	feed, err := db.CreateFeed(c.Request.Context(), userID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, err)
 		return
 	}
 
@@ -64,7 +64,7 @@ func DeleteFeed(c *gin.Context) {
 	}
 
 	if err := db.DeleteFeed(c.Request.Context(), id, userID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, err)
 		return
 	}
 
@@ -86,7 +86,7 @@ func FetchFeed(c *gin.Context) {
 
 	feed, err := db.GetFeed(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, err)
 		return
 	}
 	if feed == nil || feed.UserID != userID {
@@ -103,12 +103,12 @@ func FetchFeed(c *gin.Context) {
 	}
 
 	if err := db.UpdateFeedFetchTime(c.Request.Context(), feed.ID, fetchErr); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, err)
 		return
 	}
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, err)
 		return
 	}
 

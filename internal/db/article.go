@@ -69,19 +69,32 @@ func ListArticles(ctx context.Context, userID int64, feedID *int64, starred *boo
 	return articles, rows.Err()
 }
 
-func CreateArticle(ctx context.Context, article *model.Article) error {
+func CreateArticle(ctx context.Context, article *model.Article) (int64, error) {
 	query := `
 		INSERT INTO superread.articles 
 		(feed_id, title, url, author, published_at, content_text, summary, guid)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (feed_id, guid) DO NOTHING
+		RETURNING id
 	`
-	_, err := Pool.Exec(ctx, query,
+	var id int64
+	err := Pool.QueryRow(ctx, query,
 		article.FeedID, article.Title, article.URL, article.Author,
 		article.PublishedAt, article.ContentText, article.Summary, article.GUID,
-	)
+	).Scan(&id)
+	if err == pgx.ErrNoRows {
+		return 0, nil
+	}
 	if err != nil {
-		return fmt.Errorf("create article: %w", err)
+		return 0, fmt.Errorf("create article: %w", err)
+	}
+	return id, nil
+}
+
+func UpdateArticleSummary(ctx context.Context, id int64, summary string) error {
+	_, err := Pool.Exec(ctx, `UPDATE superread.articles SET summary = $2 WHERE id = $1`, id, summary)
+	if err != nil {
+		return fmt.Errorf("update article summary: %w", err)
 	}
 	return nil
 }
@@ -130,18 +143,19 @@ func UpdateArticle(ctx context.Context, id int64, userID int64, req model.Update
 	}
 
 	// Fetch updated article
-	return GetArticle(ctx, id)
+	return GetArticle(ctx, id, userID)
 }
 
-func GetArticle(ctx context.Context, id int64) (*model.Article, error) {
+func GetArticle(ctx context.Context, id int64, userID int64) (*model.Article, error) {
 	query := `
-		SELECT id, feed_id, title, url, author, published_at,
-		       content_text, summary, is_read, is_starred, tag, guid, created_at
-		FROM superread.articles
-		WHERE id = $1
+		SELECT a.id, a.feed_id, a.title, a.url, a.author, a.published_at,
+		       a.content_text, a.summary, a.is_read, a.is_starred, a.tag, a.guid, a.created_at
+		FROM superread.articles a
+		JOIN superread.feeds f ON a.feed_id = f.id
+		WHERE a.id = $1 AND f.user_id = $2
 	`
 	var a model.Article
-	err := Pool.QueryRow(ctx, query, id).Scan(
+	err := Pool.QueryRow(ctx, query, id, userID).Scan(
 		&a.ID, &a.FeedID, &a.Title, &a.URL, &a.Author, &a.PublishedAt,
 		&a.ContentText, &a.Summary, &a.IsRead, &a.IsStarred, &a.Tag,
 		&a.GUID, &a.CreatedAt,

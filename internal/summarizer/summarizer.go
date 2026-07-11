@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/XiaoleC05/SuperRead/internal/llm"
 	"github.com/XiaoleC05/SuperRead/internal/model"
 )
 
@@ -46,6 +47,10 @@ type chatResponse struct {
 func (s *Summarizer) Summarize(ctx context.Context, settings *model.UserSettings, article *model.Article) (string, error) {
 	if settings.APIKey == "" || settings.APIBase == "" {
 		return "", nil
+	}
+
+	if err := llm.ValidateAPIBase(settings.APIBase); err != nil {
+		return "", fmt.Errorf("invalid api base: %w", err)
 	}
 
 	prompt := fmt.Sprintf(

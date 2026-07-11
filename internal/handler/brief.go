@@ -20,7 +20,7 @@ func GetDailyBrief(c *gin.Context) {
 
 	articles, err := db.ListArticlesByDateRange(c.Request.Context(), userID, start, end)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, err)
 		return
 	}
 
