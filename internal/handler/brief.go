@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/XiaoleC05/SuperRead/internal/db"
 	"github.com/XiaoleC05/SuperRead/internal/llm"
 	"github.com/XiaoleC05/SuperRead/internal/model"
+	"github.com/XiaoleC05/SuperRead/internal/summarizer"
 	"github.com/XiaoleC05/SuperRead/internal/config"
 	"github.com/XiaoleC05/SuperRead/internal/mailer"
 	"github.com/gin-gonic/gin"
@@ -97,7 +99,7 @@ func GetDailyBrief(c *gin.Context) {
 	})
 }
 
-// GenerateDailyBrief POST /api/daily-brief/generate
+// GenerateDailyBrief POST /api/daily-brief/generate?range=24h
 func GenerateDailyBrief(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
@@ -114,7 +116,47 @@ func GenerateDailyBrief(c *gin.Context) {
 		return
 	}
 
-	articles, err := db.ListRecentSummarizedArticles(c.Request.Context(), userID, 30)
+	// Parse range (default: from settings or 24h)
+	rangeStr := c.Query("range")
+	if rangeStr == "" {
+		rangeStr = settings.BriefingRange
+		if rangeStr == "" {
+			rangeStr = "24h"
+		}
+	}
+	duration, err := parseRange(rangeStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid range: " + err.Error()})
+		return
+	}
+
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Now().In(loc)
+	since := now.Add(-duration)
+
+	// 1. Get unsummarized articles in the time window
+	unsummarized, err := db.ListUnsummarizedArticles(c.Request.Context(), userID, since)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+
+	// 2. Summarize each unsummarized article
+	s := summarizer.New()
+	for i := range unsummarized {
+		summary, err := s.Summarize(c.Request.Context(), settings, &unsummarized[i])
+		if err != nil {
+			log.Printf("GenerateDailyBrief: summarize article %d failed: %v", unsummarized[i].ID, err)
+			continue
+		}
+		if summary != "" {
+			db.UpdateArticleSummary(c.Request.Context(), unsummarized[i].ID, summary)
+			unsummarized[i].Summary = summary
+		}
+	}
+
+	// 3. Get all summarized articles in the time window
+	articles, err := db.ListSummarizedArticles(c.Request.Context(), userID, since, now)
 	if err != nil {
 		respondInternalError(c, err)
 		return
@@ -122,21 +164,21 @@ func GenerateDailyBrief(c *gin.Context) {
 
 	if len(articles) == 0 {
 		c.JSON(http.StatusOK, gin.H{
-			"date":    time.Now().Format("2006-01-02"),
+			"date":    now.Format("2006-01-02"),
 			"content": "",
 			"total":   0,
 		})
 		return
 	}
 
-	// Build prompt from article summaries
+	// 4. Build consolidation prompt
 	var sb strings.Builder
 	for _, a := range articles {
 		sb.WriteString(fmt.Sprintf("- [%s] %s\n", a.Title, a.Summary))
 	}
 
 	prompt := fmt.Sprintf(
-		"You are a news briefing editor. Consolidate the following article summaries into a coherent daily brief. Group by theme, remove duplicates, write in fluent Chinese. Output plain text only, no more than 1000 characters.\n\nArticles:\n%s",
+		"Consolidate the following article summaries into a coherent daily brief. Group by theme, remove duplicates, write in fluent Chinese. One sentence per article. Output plain text only, no more than 800 characters.\n\nArticles:\n%s",
 		sb.String(),
 	)
 
@@ -146,16 +188,13 @@ func GenerateDailyBrief(c *gin.Context) {
 		return
 	}
 
-	// Collect article IDs
+	// 5. Store in daily_briefs
 	articleIDs := make([]int64, 0, len(articles))
 	for _, a := range articles {
 		articleIDs = append(articleIDs, a.ID)
 	}
 
-	// Store in daily_briefs (upsert)
-	loc, _ := time.LoadLocation("Asia/Shanghai")
-	dateStr := time.Now().In(loc).Format("2006-01-02")
-
+	dateStr := now.Format("2006-01-02")
 	_, err = db.Pool.Exec(c.Request.Context(),
 		`INSERT INTO superread.daily_briefs (user_id, date, content, article_ids)
 		 VALUES ($1, $2, $3, $4)
@@ -170,7 +209,7 @@ func GenerateDailyBrief(c *gin.Context) {
 		return
 	}
 
-	// Build article list for response
+	// 6. Build response
 	brief := make([]BriefArticle, 0, len(articles))
 	for _, a := range articles {
 		published := ""
@@ -197,6 +236,26 @@ func GenerateDailyBrief(c *gin.Context) {
 	})
 }
 
+func parseRange(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 {
+		return 0, fmt.Errorf("invalid range format")
+	}
+	unit := s[len(s)-1]
+	numStr := s[:len(s)-1]
+	num, err := strconv.Atoi(numStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid number: %s", numStr)
+	}
+	switch unit {
+	case 'h':
+		return time.Duration(num) * time.Hour, nil
+	case 'd':
+		return time.Duration(num) * 24 * time.Hour, nil
+	default:
+		return 0, fmt.Errorf("invalid unit: %c (use h or d)", unit)
+	}
+}
 func fetchBriefArticles(c *gin.Context, userID int64, articleIDs []int64) []BriefArticle {
 	if len(articleIDs) == 0 {
 		return []BriefArticle{}

@@ -17,6 +17,7 @@ type settingsDTO struct {
 	Model            string `json:"model"`
 	FetchIntervalMin int    `json:"fetch_interval_min"`
 	Email            string `json:"email"`
+	BriefingRange   string `json:"briefing_range"`
 	UpdatedAt        string `json:"updated_at,omitempty"`
 }
 
@@ -28,6 +29,7 @@ func toSettingsDTO(s *model.UserSettings) settingsDTO {
 		Model:            s.Model,
 		FetchIntervalMin: s.FetchIntervalMin,
 		Email:            s.Email,
+		BriefingRange:   s.BriefingRange,
 		UpdatedAt:        s.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
@@ -52,6 +54,7 @@ func GetSettings(c *gin.Context) {
 			Model:            "gpt-4o-mini",
 			FetchIntervalMin: 30,
 			Email:            "",
+			BriefingRange:   "24h",
 		}
 	}
 

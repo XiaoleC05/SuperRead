@@ -38,6 +38,7 @@ type UserSettings struct {
 	Model           string    `json:"model"`
 	FetchIntervalMin int      `json:"fetch_interval_min"`
 	Email           string    `json:"email"`
+	BriefingRange   string    `json:"briefing_range"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
@@ -69,6 +70,7 @@ type UpdateSettingsRequest struct {
 	Model            *string `json:"model,omitempty"`
 	FetchIntervalMin *int    `json:"fetch_interval_min,omitempty"`
 	Email            *string `json:"email,omitempty"`
+	BriefingRange   *string `json:"briefing_range,omitempty"`
 }
 
 type OPMLImportResponse struct {

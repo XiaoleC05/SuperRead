@@ -11,14 +11,14 @@ import (
 
 func GetSettings(ctx context.Context, userID int64) (*model.UserSettings, error) {
 	query := `
-		SELECT user_id, api_key, api_base, model, fetch_interval_min, email, updated_at
+		SELECT user_id, api_key, api_base, model, fetch_interval_min, email, briefing_range, updated_at
 		FROM superread.user_settings
 		WHERE user_id = $1
 	`
 	var s model.UserSettings
 	err := Pool.QueryRow(ctx, query, userID).Scan(
 		&s.UserID, &s.APIKey, &s.APIBase, &s.Model,
-		&s.FetchIntervalMin, &s.Email, &s.UpdatedAt,
+		&s.FetchIntervalMin, &s.Email, &s.BriefingRange, &s.UpdatedAt,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -43,6 +43,7 @@ func UpdateSettings(ctx context.Context, userID int64, req model.UpdateSettingsR
 			Model:           "gpt-4o-mini",
 			FetchIntervalMin: 30,
 			Email:           "",
+			BriefingRange:   "24h",
 		}
 	}
 
@@ -61,21 +62,25 @@ func UpdateSettings(ctx context.Context, userID int64, req model.UpdateSettingsR
 	if req.Email != nil {
 		current.Email = *req.Email
 	}
+	if req.BriefingRange != nil {
+		current.BriefingRange = *req.BriefingRange
+	}
 
 	query := `
-		INSERT INTO superread.user_settings (user_id, api_key, api_base, model, fetch_interval_min, email)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO superread.user_settings (user_id, api_key, api_base, model, fetch_interval_min, email, briefing_range)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (user_id) DO UPDATE SET
 			api_key = EXCLUDED.api_key,
 			api_base = EXCLUDED.api_base,
 			model = EXCLUDED.model,
 			fetch_interval_min = EXCLUDED.fetch_interval_min,
 			email = EXCLUDED.email,
+			briefing_range = EXCLUDED.briefing_range,
 			updated_at = NOW()
 	`
 	_, err = Pool.Exec(ctx, query,
 		current.UserID, current.APIKey, current.APIBase,
-		current.Model, current.FetchIntervalMin, current.Email,
+		current.Model, current.FetchIntervalMin, current.Email, current.BriefingRange,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("update settings: %w", err)
