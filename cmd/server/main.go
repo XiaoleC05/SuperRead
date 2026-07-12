@@ -73,6 +73,7 @@ func main() {
 
 		// Brief
 		api.GET("/daily-brief", handler.GetDailyBrief)
+		api.POST("/daily-brief/generate", handler.GenerateDailyBrief)
 
 		// Settings
 		api.GET("/settings", handler.GetSettings)

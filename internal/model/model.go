@@ -41,6 +41,14 @@ type UserSettings struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
+type DailyBrief struct {
+	ID         int64     `json:"id"`
+	UserID     int64     `json:"user_id"`
+	Date       string    `json:"date"`
+	Content    string    `json:"content"`
+	ArticleIDs []int64   `json:"article_ids"`
+	CreatedAt  time.Time `json:"created_at"`
+}
 // Request/Response DTOs
 
 type CreateFeedRequest struct {
