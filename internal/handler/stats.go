@@ -27,34 +27,33 @@ func maskAPIKey(key string) string {
 	return "sk-..." + key[len(key)-4:]
 }
 
-// Stats GET /api/stats 返回用户 API Key 配置状态与用量统计
+// Stats GET /api/stats - returns API Key config status without reading plaintext key
 func Stats(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
 		return
 	}
 
-	var apiKey string
+	var configured bool
 	var updatedAt *string
 
 	err := db.Pool.QueryRow(c.Request.Context(),
-		`SELECT api_key, updated_at::text FROM superread.user_settings WHERE user_id = $1`,
+		`SELECT (api_key != '')::bool, updated_at::text FROM superread.user_settings WHERE user_id = $1`,
 		userID,
-	).Scan(&apiKey, &updatedAt)
+	).Scan(&configured, &updatedAt)
 
 	resp := statsResponse{}
 
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "鏌ヨ澶辫触"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
 			return
 		}
 		c.JSON(http.StatusOK, resp)
 		return
 	}
 
-	resp.APIKeyConfigured = apiKey != ""
-	resp.APIKeyMasked = maskAPIKey(apiKey)
+	resp.APIKeyConfigured = configured
 	if updatedAt != nil {
 		resp.LastUpdated = *updatedAt
 	}

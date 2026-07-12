@@ -49,6 +49,10 @@ func Load() *Config {
 		log.Fatal("DATABASE_URL is required")
 	}
 
+	if Cfg.GatewayHMACSecret == "" && Cfg.OxeliaGatewayMode {
+		log.Println("[WARN] GATEWAY_HMAC_SECRET is empty in gateway mode - HMAC verification disabled")
+	}
+
 	return Cfg
 }
 

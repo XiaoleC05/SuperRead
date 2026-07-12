@@ -37,6 +37,7 @@ type UserSettings struct {
 	APIBase         string    `json:"api_base"`
 	Model           string    `json:"model"`
 	FetchIntervalMin int      `json:"fetch_interval_min"`
+	Email           string    `json:"email"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
@@ -59,6 +60,7 @@ type UpdateSettingsRequest struct {
 	APIBase          *string `json:"api_base,omitempty"`
 	Model            *string `json:"model,omitempty"`
 	FetchIntervalMin *int    `json:"fetch_interval_min,omitempty"`
+	Email            *string `json:"email,omitempty"`
 }
 
 type OPMLImportResponse struct {

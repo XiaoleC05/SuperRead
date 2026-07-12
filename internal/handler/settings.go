@@ -16,6 +16,7 @@ type settingsDTO struct {
 	APIBase          string `json:"api_base"`
 	Model            string `json:"model"`
 	FetchIntervalMin int    `json:"fetch_interval_min"`
+	Email            string `json:"email"`
 	UpdatedAt        string `json:"updated_at,omitempty"`
 }
 
@@ -26,6 +27,7 @@ func toSettingsDTO(s *model.UserSettings) settingsDTO {
 		APIBase:          s.APIBase,
 		Model:            s.Model,
 		FetchIntervalMin: s.FetchIntervalMin,
+		Email:            s.Email,
 		UpdatedAt:        s.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
@@ -49,12 +51,12 @@ func GetSettings(c *gin.Context) {
 			APIBase:          "",
 			Model:            "gpt-4o-mini",
 			FetchIntervalMin: 30,
+			Email:            "",
 		}
 	}
 
 	dto := toSettingsDTO(settings)
 
-	// ?full=true returns the unmasked API key (for copy-to-clipboard)
 	if c.Query("full") == "true" {
 		dto.APIKey = settings.APIKey
 	}

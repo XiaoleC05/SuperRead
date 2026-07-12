@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/XiaoleC05/SuperRead/internal/config"
@@ -21,7 +22,6 @@ func Start() {
 	loc, _ := time.LoadLocation("Asia/Shanghai")
 	scheduler = cron.New(cron.WithLocation(loc))
 
-	// Feed fetch (configurable interval, default 30m)
 	fetchInterval := config.Cfg.FetchCronInterval
 	if fetchInterval == "" {
 		fetchInterval = "@every 30m"
@@ -37,7 +37,6 @@ func Start() {
 		log.Printf("Failed to add fetch cron job: %v", err)
 	}
 
-	// Daily briefing (configurable, default 8:00 Beijing time)
 	briefingCron := config.Cfg.BriefingCronTime
 	if briefingCron == "" {
 		briefingCron = "0 8 * * *"
@@ -58,84 +57,128 @@ func Start() {
 }
 
 func generateAndSendBriefings(ctx context.Context, loc *time.Location) {
-	// Get all users with API key configured
+	// Query all users with API key + email
 	rows, err := db.Pool.Query(ctx,
-		`SELECT user_id, api_key, api_base, model FROM superread.user_settings WHERE api_key != ''`)
+		`SELECT user_id, api_key, api_base, model, email FROM superread.user_settings WHERE api_key != ''`)
 	if err != nil {
 		log.Printf("Briefing: failed to query users: %v", err)
 		return
 	}
-	defer rows.Close()
 
-	s := summarizer.New()
-	now := time.Now().In(loc)
-	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	end := start.Add(24 * time.Hour)
-
+	var users []model.UserSettings
 	for rows.Next() {
-		var settings model.UserSettings
-		if err := rows.Scan(&settings.UserID, &settings.APIKey, &settings.APIBase, &settings.Model); err != nil {
+		var s model.UserSettings
+		if err := rows.Scan(&s.UserID, &s.APIKey, &s.APIBase, &s.Model, &s.Email); err != nil {
 			log.Printf("Briefing: failed to scan user: %v", err)
 			continue
 		}
+		users = append(users, s)
+	}
+	rows.Close()
 
-		// Get recent articles and summarize unsummarized ones
-		articles, err := db.ListArticles(ctx, settings.UserID, nil, nil, nil, 50)
-		if err != nil {
-			log.Printf("Briefing: failed to list articles for user %d: %v", settings.UserID, err)
-			continue
-		}
+	if len(users) == 0 {
+		return
+	}
+
+	now := time.Now().In(loc)
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	end := start.Add(24 * time.Hour)
+	since := start.Add(-24 * time.Hour) // 24h window for unsummarized articles
+
+	var wg sync.WaitGroup
+	for _, settings := range users {
+		wg.Add(1)
+		go func(s model.UserSettings) {
+			defer wg.Done()
+			processUserBriefing(ctx, s, loc, start, end, since)
+		}(settings)
+	}
+	wg.Wait()
+}
+
+func processUserBriefing(ctx context.Context, settings model.UserSettings, loc *time.Location, start, end, since time.Time) {
+	s := summarizer.New()
+
+	// Get unsummarized articles from the time window
+	articles, err := db.ListUnsummarizedArticles(ctx, settings.UserID, since)
+	if err != nil {
+		log.Printf("Briefing: failed to list unsummarized articles for user %d: %v", settings.UserID, err)
+		return
+	}
+
+	if len(articles) > 0 {
+		// Semaphore: max 3 concurrent summarizations
+		sem := make(chan struct{}, 3)
+		var sumWg sync.WaitGroup
 
 		for i := range articles {
-			if articles[i].Summary != "" {
-				continue
-			}
-			summary, err := s.Summarize(ctx, &settings, &articles[i])
-			if err != nil {
-				log.Printf("Briefing: summarize article %d failed: %v", articles[i].ID, err)
-				continue
-			}
-			if summary != "" {
-				if err := db.UpdateArticleSummary(ctx, articles[i].ID, summary); err != nil {
-					log.Printf("Briefing: update article %d summary failed: %v", articles[i].ID, err)
+			sumWg.Add(1)
+			go func(article *model.Article) {
+				defer sumWg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				// Per-article timeout: 60s
+				sumCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+				defer cancel()
+
+				summary, err := s.Summarize(sumCtx, &settings, article)
+				if err != nil {
+					log.Printf("Briefing: summarize article %d failed: %v", article.ID, err)
+					return
 				}
-			}
+				if summary != "" {
+					if err := db.UpdateArticleSummary(ctx, article.ID, summary); err != nil {
+						log.Printf("Briefing: update article %d summary failed: %v", article.ID, err)
+					}
+				}
+			}(&articles[i])
 		}
-
-		// Get summarized articles for today's briefing
-		summarized, err := db.ListSummarizedArticles(ctx, settings.UserID, start, end)
-		if err != nil {
-			log.Printf("Briefing: failed to list summarized articles for user %d: %v", settings.UserID, err)
-			continue
-		}
-
-		if len(summarized) == 0 {
-			continue
-		}
-
-		// Send email if SMTP configured
-		if config.Cfg.SMTPHost != "" && config.Cfg.DefaultToEmail != "" {
-			briefingArticles := make([]mailer.BriefingArticle, 0, len(summarized))
-			for _, a := range summarized {
-				briefingArticles = append(briefingArticles, mailer.BriefingArticle{
-					Title:     a.Title,
-					FeedTitle: a.FeedTitle,
-					Summary:   a.Summary,
-					URL:       a.URL,
-				})
-			}
-
-			htmlBody := renderBriefingHTML(start.Format("2006-01-02"), briefingArticles)
-			subject := fmt.Sprintf("SuperRead Daily Brief - %s", start.Format("2006-01-02"))
-			if err := mailer.SendBriefing(config.Cfg.DefaultToEmail, subject, htmlBody); err != nil {
-				log.Printf("Briefing: failed to send email for user %d: %v", settings.UserID, err)
-			} else {
-				log.Printf("Briefing: sent %d articles to %s", len(summarized), config.Cfg.DefaultToEmail)
-			}
-		}
-
-		log.Printf("Briefing: processed user %d, %d summarized articles", settings.UserID, len(summarized))
+		sumWg.Wait()
 	}
+
+	// Get summarized articles for today's briefing
+	summarized, err := db.ListSummarizedArticles(ctx, settings.UserID, start, end)
+	if err != nil {
+		log.Printf("Briefing: failed to list summarized articles for user %d: %v", settings.UserID, err)
+		return
+	}
+
+	if len(summarized) == 0 {
+		return
+	}
+
+	// Send email if SMTP configured
+	if config.Cfg.SMTPHost != "" {
+		// Use user email, fallback to DefaultToEmail
+		to := settings.Email
+		if to == "" {
+			to = config.Cfg.DefaultToEmail
+		}
+		if to == "" {
+			return
+		}
+
+		briefingArticles := make([]mailer.BriefingArticle, 0, len(summarized))
+		for _, a := range summarized {
+			briefingArticles = append(briefingArticles, mailer.BriefingArticle{
+				Title:     a.Title,
+				FeedTitle: a.FeedTitle,
+				Summary:   a.Summary,
+				URL:       a.URL,
+			})
+		}
+
+		htmlBody := renderBriefingHTML(start.Format("2006-01-02"), briefingArticles)
+		subject := fmt.Sprintf("SuperRead Daily Brief - %s", start.Format("2006-01-02"))
+		if err := mailer.SendBriefing(to, subject, htmlBody); err != nil {
+			log.Printf("Briefing: failed to send email to %s: %v", to, err)
+		} else {
+			log.Printf("Briefing: sent %d articles to %s", len(summarized), to)
+		}
+	}
+
+	log.Printf("Briefing: processed user %d, %d summarized articles", settings.UserID, len(summarized))
 }
 
 func renderBriefingHTML(date string, articles []mailer.BriefingArticle) string {
