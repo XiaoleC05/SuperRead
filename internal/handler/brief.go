@@ -14,6 +14,8 @@ import (
 	"github.com/XiaoleC05/SuperRead/internal/db"
 	"github.com/XiaoleC05/SuperRead/internal/llm"
 	"github.com/XiaoleC05/SuperRead/internal/model"
+	"github.com/XiaoleC05/SuperRead/internal/config"
+	"github.com/XiaoleC05/SuperRead/internal/mailer"
 	"github.com/gin-gonic/gin"
 )
 
@@ -312,4 +314,77 @@ func callLLM(ctx context.Context, settings *model.UserSettings, prompt string) (
 	}
 
 	return strings.TrimSpace(cr.Choices[0].Message.Content), nil
+}
+// SendBriefingToEmail POST /api/daily-brief/send
+func SendBriefingToEmail(c *gin.Context) {
+	userID, ok := GetUserID(c)
+	if !ok {
+		return
+	}
+
+	settings, err := db.GetSettings(c.Request.Context(), userID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if settings == nil || settings.Email == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "email not configured"})
+		return
+	}
+
+	if config.Cfg.SMTPHost == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "SMTP not configured"})
+		return
+	}
+
+	articles, err := db.ListRecentSummarizedArticles(c.Request.Context(), userID, 30)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+
+	if len(articles) == 0 {
+		c.JSON(http.StatusOK, gin.H{"sent": false, "message": "no summarized articles, generate summaries first"})
+		return
+	}
+
+	briefingArticles := make([]mailer.BriefingArticle, 0, len(articles))
+	for _, a := range articles {
+		briefingArticles = append(briefingArticles, mailer.BriefingArticle{
+			Title:     a.Title,
+			FeedTitle: a.FeedTitle,
+			Summary:   a.Summary,
+			URL:       a.URL,
+		})
+	}
+
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Now().In(loc)
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	dateStr := start.Format("2006-01-02")
+	subject := fmt.Sprintf("SuperRead Daily Brief - %s", dateStr)
+	htmlBody := renderBriefingHTML(dateStr, briefingArticles)
+
+	if err := mailer.SendBriefing(settings.Email, subject, htmlBody); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "send failed: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"sent": true, "count": len(articles), "to": settings.Email})
+}
+
+func renderBriefingHTML(date string, articles []mailer.BriefingArticle) string {
+	html := fmt.Sprintf(`<html><body style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+<h2>SuperRead Daily Brief - %s</h2>`, date)
+
+	for _, a := range articles {
+		html += fmt.Sprintf(`<div style="margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+<h3 style="margin: 0 0 5px 0;"><a href="%s" style="text-decoration: none; color: #333;">%s</a></h3>
+<p style="color: #888; font-size: 12px; margin: 0 0 10px 0;">%s</p>
+<p style="color: #555; font-size: 14px; line-height: 1.6;">%s</p>
+</div>`, a.URL, a.Title, a.FeedTitle, a.Summary)
+	}
+
+	html += "</body></html>"
+	return html
 }

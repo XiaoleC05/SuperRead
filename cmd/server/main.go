@@ -74,6 +74,7 @@ func main() {
 		// Brief
 		api.GET("/daily-brief", handler.GetDailyBrief)
 		api.POST("/daily-brief/generate", handler.GenerateDailyBrief)
+		api.POST("/daily-brief/send", handler.SendBriefingToEmail)
 
 		// Settings
 		api.GET("/settings", handler.GetSettings)
