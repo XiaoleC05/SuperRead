@@ -8,34 +8,50 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type BriefArticle struct {
+	ID        int64  `json:"id"`
+	FeedID    int64  `json:"feed_id"`
+	FeedTitle string `json:"feed_title"`
+	Title     string `json:"title"`
+	URL       string `json:"url"`
+	Author    string `json:"author"`
+	Summary   string `json:"summary"`
+	Published string `json:"published"`
+}
+
 func GetDailyBrief(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
 		return
 	}
 
-	now := time.Now()
-	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	now := time.Now().In(loc)
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 	end := start.Add(24 * time.Hour)
 
-	articles, err := db.ListArticlesByDateRange(c.Request.Context(), userID, start, end)
+	articles, err := db.ListSummarizedArticles(c.Request.Context(), userID, start, end)
 	if err != nil {
 		respondInternalError(c, err)
 		return
 	}
 
-	brief := make([]map[string]interface{}, 0, len(articles))
+	brief := make([]BriefArticle, 0, len(articles))
 	for _, a := range articles {
-		item := map[string]interface{}{
-			"id":        a.ID,
-			"feed_id":   a.FeedID,
-			"title":     a.Title,
-			"url":       a.URL,
-			"author":    a.Author,
-			"summary":   a.Summary,
-			"published": a.PublishedAt,
+		published := ""
+		if a.PublishedAt != nil {
+			published = a.PublishedAt.In(loc).Format("2006-01-02 15:04")
 		}
-		brief = append(brief, item)
+		brief = append(brief, BriefArticle{
+			ID:        a.ID,
+			FeedID:    a.FeedID,
+			FeedTitle: a.FeedTitle,
+			Title:     a.Title,
+			URL:       a.URL,
+			Author:    a.Author,
+			Summary:   a.Summary,
+			Published: published,
+		})
 	}
 
 	c.JSON(http.StatusOK, gin.H{

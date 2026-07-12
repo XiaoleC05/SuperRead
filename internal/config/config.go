@@ -14,6 +14,14 @@ type Config struct {
 	OxeliaGatewayMode  bool
 	DefaultFetchMin    int
 	GatewayHMACSecret  string
+	FetchCronInterval string
+	BriefingCronTime  string
+	SMTPHost          string
+	SMTPPort          int
+	SMTPUser          string
+	SMTPPassword      string
+	FromEmail         string
+	DefaultToEmail    string
 }
 
 var Cfg *Config
@@ -27,6 +35,14 @@ func Load() *Config {
 		OxeliaGatewayMode: getEnvBool("OXELIA_GATEWAY_MODE", false),
 		DefaultFetchMin:   getEnvInt("DEFAULT_FETCH_INTERVAL_MIN", 30),
 		GatewayHMACSecret:  getEnv("GATEWAY_HMAC_SECRET", ""),
+		FetchCronInterval: getEnv("FETCH_CRON_INTERVAL", "@every 30m"),
+		BriefingCronTime:  getEnv("BRIEFING_CRON_TIME", "0 8 * * *"),
+		SMTPHost:          getEnv("SMTP_HOST", ""),
+		SMTPPort:          getEnvInt("SMTP_PORT", 587),
+		SMTPUser:          getEnv("SMTP_USER", ""),
+		SMTPPassword:      getEnv("SMTP_PASSWORD", ""),
+		FromEmail:         getEnv("FROM_EMAIL", ""),
+		DefaultToEmail:    getEnv("DEFAULT_TO_EMAIL", ""),
 	}
 
 	if Cfg.DatabaseURL == "" {
