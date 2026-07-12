@@ -22,11 +22,17 @@ func Start() {
 	loc, _ := time.LoadLocation("Asia/Shanghai")
 	scheduler = cron.New(cron.WithLocation(loc))
 
-	fetchInterval := config.Cfg.FetchCronInterval
-	if fetchInterval == "" {
-		fetchInterval = "@every 30m"
+	fetchMin := 30
+	var minVal int
+	err := db.Pool.QueryRow(context.Background(),
+		`SELECT COALESCE(MIN(fetch_interval_min), 30) FROM superread.user_settings`,
+	).Scan(&minVal)
+	if err == nil && minVal > 0 {
+		fetchMin = minVal
 	}
-	_, err := scheduler.AddFunc(fetchInterval, func() {
+	fetchInterval := fmt.Sprintf("@every %dm", fetchMin)
+	log.Printf("Cron: feed fetch interval set to %s (from user_settings)", fetchInterval)
+	_, err = scheduler.AddFunc(fetchInterval, func() {
 		log.Println("Cron: feed fetch started")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()

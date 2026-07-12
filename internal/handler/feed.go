@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/XiaoleC05/SuperRead/internal/db"
 	"github.com/XiaoleC05/SuperRead/internal/fetcher"
@@ -91,6 +92,17 @@ func FetchFeed(c *gin.Context) {
 	}
 	if feed == nil || feed.UserID != userID {
 		c.JSON(http.StatusNotFound, gin.H{"error": "feed not found"})
+		return
+	}
+
+	// Skip if fetched within 24 hours
+	if feed.LastFetchedAt != nil && time.Since(*feed.LastFetchedAt) < 24*time.Hour {
+		c.JSON(http.StatusOK, gin.H{
+			"added":           0,
+			"skipped":          true,
+			"message":          "fetched within 24h, skipping",
+			"last_fetched_at": feed.LastFetchedAt,
+		})
 		return
 	}
 
