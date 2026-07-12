@@ -79,6 +79,9 @@ func main() {
 		api.PUT("/settings", handler.UpdateSettings)
 
 		api.GET("/stats", handler.Stats)
+
+		// Summarize
+		api.POST("/summarize", handler.Summarize)
 	}
 
 	// Start cron scheduler
