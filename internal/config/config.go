@@ -13,6 +13,7 @@ type Config struct {
 	Port               string
 	OxeliaGatewayMode  bool
 	DefaultFetchMin    int
+	GatewayHMACSecret  string
 }
 
 var Cfg *Config
@@ -25,6 +26,7 @@ func Load() *Config {
 		Port:              getEnv("SUPERREAD_PORT", "8002"),
 		OxeliaGatewayMode: getEnvBool("OXELIA_GATEWAY_MODE", false),
 		DefaultFetchMin:   getEnvInt("DEFAULT_FETCH_INTERVAL_MIN", 30),
+		GatewayHMACSecret:  getEnv("GATEWAY_HMAC_SECRET", ""),
 	}
 
 	if Cfg.DatabaseURL == "" {

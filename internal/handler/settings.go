@@ -22,7 +22,7 @@ type settingsDTO struct {
 func toSettingsDTO(s *model.UserSettings) settingsDTO {
 	return settingsDTO{
 		UserID:           s.UserID,
-		APIKey:           s.APIKey,
+		APIKey:           maskAPIKey(s.APIKey),
 		APIBase:          s.APIBase,
 		Model:            s.Model,
 		FetchIntervalMin: s.FetchIntervalMin,
@@ -52,7 +52,14 @@ func GetSettings(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"settings": toSettingsDTO(settings)})
+	dto := toSettingsDTO(settings)
+
+	// ?full=true returns the unmasked API key (for copy-to-clipboard)
+	if c.Query("full") == "true" {
+		dto.APIKey = settings.APIKey
+	}
+
+	c.JSON(http.StatusOK, gin.H{"settings": dto})
 }
 
 func UpdateSettings(c *gin.Context) {
@@ -69,7 +76,7 @@ func UpdateSettings(c *gin.Context) {
 
 	if req.APIBase != nil && strings.TrimSpace(*req.APIBase) != "" {
 		if err := llm.ValidateAPIBase(*req.APIBase); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "无效的 API 地址"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid API base"})
 			return
 		}
 	}
