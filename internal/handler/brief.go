@@ -573,6 +573,7 @@ func ListDailyBriefs(c *gin.Context) {
 			createdAt  time.Time
 		)
 		if err := rows.Scan(&dateStr, &content, &articleIDs, &createdAt); err != nil {
+			log.Printf("scan brief: %v", err)
 			continue
 		}
 
