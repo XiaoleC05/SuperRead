@@ -455,3 +455,68 @@ func renderBriefingHTML(date string, articles []mailer.BriefingArticle) string {
 	html += "</body></html>"
 	return html
 }
+
+// ListDailyBriefs GET /api/daily-brief/list?limit=30
+func ListDailyBriefs(c *gin.Context) {
+	userID, ok := GetUserID(c)
+	if !ok {
+		return
+	}
+
+	limit := 30
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	rows, err := db.Pool.Query(c.Request.Context(),
+		`SELECT date, content, article_ids, created_at
+		 FROM superread.daily_briefs
+		 WHERE user_id = $1
+		 ORDER BY date DESC
+		 LIMIT $2`,
+		userID, limit,
+	)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	type briefItem struct {
+		Date         string `json:"date"`
+		Content      string `json:"content"`
+		Preview      string `json:"preview"`
+		ArticleCount int    `json:"article_count"`
+		CreatedAt    string `json:"created_at"`
+	}
+
+	items := []briefItem{}
+	for rows.Next() {
+		var (
+			dateStr    string
+			content    string
+			articleIDs []int64
+			createdAt  time.Time
+		)
+		if err := rows.Scan(&dateStr, &content, &articleIDs, &createdAt); err != nil {
+			continue
+		}
+
+		preview := content
+		if len(preview) > 150 {
+			preview = preview[:150] + "..."
+		}
+
+		items = append(items, briefItem{
+			Date:         dateStr,
+			Content:      content,
+			Preview:      preview,
+			ArticleCount: len(articleIDs),
+			CreatedAt:    createdAt.Format(time.RFC3339),
+		})
+	}
+
+	c.JSON(http.StatusOK, items)
+}
