@@ -277,6 +277,41 @@ func ListUnsummarizedArticles(ctx context.Context, userID int64, since time.Time
 	return articles, rows.Err()
 }
 
+
+func ListRecentSummarizedArticles(ctx context.Context, userID int64, limit int) ([]model.Article, error) {
+	query := `
+		SELECT a.id, a.feed_id, a.title, a.url, a.author, a.published_at,
+		       a.content_text, a.summary, a.is_read, a.is_starred, a.tag,
+		       a.guid, a.created_at, f.title as feed_title
+		FROM superread.articles a
+		JOIN superread.feeds f ON a.feed_id = f.id
+		WHERE f.user_id = $1 AND a.summary != ''
+		ORDER BY a.published_at DESC
+		LIMIT $2
+	`
+	rows, err := Pool.Query(ctx, query, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query recent summarized articles: %w", err)
+	}
+	defer rows.Close()
+
+	var articles []model.Article
+	for rows.Next() {
+		var a model.Article
+		err := rows.Scan(
+			&a.ID, &a.FeedID, &a.Title, &a.URL, &a.Author, &a.PublishedAt,
+			&a.ContentText, &a.Summary, &a.IsRead, &a.IsStarred, &a.Tag,
+			&a.GUID, &a.CreatedAt, &a.FeedTitle,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan article: %w", err)
+		}
+		articles = append(articles, a)
+	}
+
+	return articles, rows.Err()
+}
+
 func joinStrings(strs []string, sep string) string {
 	result := ""
 	for i, s := range strs {

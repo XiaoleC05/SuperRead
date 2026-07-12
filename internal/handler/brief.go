@@ -25,12 +25,7 @@ func GetDailyBrief(c *gin.Context) {
 		return
 	}
 
-	loc, _ := time.LoadLocation("Asia/Shanghai")
-	now := time.Now().In(loc)
-	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	end := start.Add(24 * time.Hour)
-
-	articles, err := db.ListSummarizedArticles(c.Request.Context(), userID, start, end)
+	articles, err := db.ListRecentSummarizedArticles(c.Request.Context(), userID, 30)
 	if err != nil {
 		respondInternalError(c, err)
 		return
@@ -40,7 +35,7 @@ func GetDailyBrief(c *gin.Context) {
 	for _, a := range articles {
 		published := ""
 		if a.PublishedAt != nil {
-			published = a.PublishedAt.In(loc).Format("2006-01-02 15:04")
+			published = a.PublishedAt.Format("2006-01-02 15:04")
 		}
 		brief = append(brief, BriefArticle{
 			ID:        a.ID,
@@ -55,7 +50,7 @@ func GetDailyBrief(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"date":     start.Format("2006-01-02"),
+		"date":     time.Now().Format("2006-01-02"),
 		"articles": brief,
 		"total":    len(brief),
 	})
