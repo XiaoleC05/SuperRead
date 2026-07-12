@@ -28,6 +28,7 @@ type Article struct {
 	Tag         string     `json:"tag"`
 	GUID        string     `json:"guid"`
 	CreatedAt   time.Time  `json:"created_at"`
+	FeedTitle   string     `json:"feed_title"`
 }
 
 type UserSettings struct {

@@ -13,7 +13,7 @@ func ListArticles(ctx context.Context, userID int64, feedID *int64, starred *boo
 	query := `
 		SELECT a.id, a.feed_id, a.title, a.url, a.author, a.published_at,
 		       a.content_text, a.summary, a.is_read, a.is_starred, a.tag,
-		       a.guid, a.created_at
+		       a.guid, a.created_at, f.title as feed_title
 		FROM superread.articles a
 		JOIN superread.feeds f ON a.feed_id = f.id
 		WHERE f.user_id = $1
@@ -58,7 +58,7 @@ func ListArticles(ctx context.Context, userID int64, feedID *int64, starred *boo
 		err := rows.Scan(
 			&a.ID, &a.FeedID, &a.Title, &a.URL, &a.Author, &a.PublishedAt,
 			&a.ContentText, &a.Summary, &a.IsRead, &a.IsStarred, &a.Tag,
-			&a.GUID, &a.CreatedAt,
+			&a.GUID, &a.CreatedAt, &a.FeedTitle,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan article: %w", err)
@@ -149,7 +149,7 @@ func UpdateArticle(ctx context.Context, id int64, userID int64, req model.Update
 func GetArticle(ctx context.Context, id int64, userID int64) (*model.Article, error) {
 	query := `
 		SELECT a.id, a.feed_id, a.title, a.url, a.author, a.published_at,
-		       a.content_text, a.summary, a.is_read, a.is_starred, a.tag, a.guid, a.created_at
+		       a.content_text, a.summary, a.is_read, a.is_starred, a.tag, a.guid, a.created_at, f.title as feed_title
 		FROM superread.articles a
 		JOIN superread.feeds f ON a.feed_id = f.id
 		WHERE a.id = $1 AND f.user_id = $2
@@ -158,7 +158,7 @@ func GetArticle(ctx context.Context, id int64, userID int64) (*model.Article, er
 	err := Pool.QueryRow(ctx, query, id, userID).Scan(
 		&a.ID, &a.FeedID, &a.Title, &a.URL, &a.Author, &a.PublishedAt,
 		&a.ContentText, &a.Summary, &a.IsRead, &a.IsStarred, &a.Tag,
-		&a.GUID, &a.CreatedAt,
+		&a.GUID, &a.CreatedAt, &a.FeedTitle,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, nil
@@ -173,7 +173,7 @@ func ListArticlesByDateRange(ctx context.Context, userID int64, start, end time.
 	query := `
 		SELECT a.id, a.feed_id, a.title, a.url, a.author, a.published_at,
 		       a.content_text, a.summary, a.is_read, a.is_starred, a.tag,
-		       a.guid, a.created_at
+		       a.guid, a.created_at, f.title as feed_title
 		FROM superread.articles a
 		JOIN superread.feeds f ON a.feed_id = f.id
 		WHERE f.user_id = $1
@@ -193,7 +193,7 @@ func ListArticlesByDateRange(ctx context.Context, userID int64, start, end time.
 		err := rows.Scan(
 			&a.ID, &a.FeedID, &a.Title, &a.URL, &a.Author, &a.PublishedAt,
 			&a.ContentText, &a.Summary, &a.IsRead, &a.IsStarred, &a.Tag,
-			&a.GUID, &a.CreatedAt,
+			&a.GUID, &a.CreatedAt, &a.FeedTitle,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan article: %w", err)
