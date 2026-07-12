@@ -120,6 +120,7 @@ func GenerateDailyBrief(c *gin.Context) {
 	now := time.Now().In(loc)
 
 	var articles []model.Article
+	useContentText := false
 
 	// Check if specific article IDs are provided (?ids=1,2,3)
 	idsStr := c.Query("ids")
@@ -135,6 +136,7 @@ func GenerateDailyBrief(c *gin.Context) {
 			return
 		}
 		articles = fetchArticlesByIDs(c.Request.Context(), userID, ids)
+		useContentText = true
 	} else {
 		// Parse range (default: from settings or 24h)
 		rangeStr := c.Query("range")
@@ -190,15 +192,23 @@ func GenerateDailyBrief(c *gin.Context) {
 	}
 
 	// 4. Build consolidation prompt
+	// When useContentText (ids path): use truncated article content, skip per-article summarization
+	// Otherwise (range/force path): use existing summaries
 	var sb strings.Builder
+	sb.WriteString("Consolidate the following articles into a coherent daily brief. Group by theme, remove duplicates, write in fluent Chinese. One sentence per article. Output plain text only, no more than 800 characters.\n\nArticles:\n")
 	for _, a := range articles {
-		sb.WriteString(fmt.Sprintf("- [%s] %s\n", a.Title, a.Summary))
+		if useContentText {
+			content := a.ContentText
+			if len([]rune(content)) > 500 {
+				content = string([]rune(content)[:500])
+			}
+			sb.WriteString(fmt.Sprintf("- [%s] %s\n", a.Title, content))
+		} else {
+			sb.WriteString(fmt.Sprintf("- [%s] %s\n", a.Title, a.Summary))
+		}
 	}
 
-	prompt := fmt.Sprintf(
-		"Consolidate the following article summaries into a coherent daily brief. Group by theme, remove duplicates, write in fluent Chinese. One sentence per article. Output plain text only, no more than 800 characters.\n\nArticles:\n%s",
-		sb.String(),
-	)
+	prompt := sb.String()
 
 	content, err := callLLM(c.Request.Context(), settings, prompt)
 	if err != nil {
