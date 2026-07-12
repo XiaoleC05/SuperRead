@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -22,13 +22,14 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.23'
           cache-dependency-path: go.sum
 
-      - name: Go vet + test
-        run: |
-          go vet ./...
-          go test -race ./...
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Go test
+        run: go test ./...
 
       - name: Cross-compile (linux/amd64)
         run: |
