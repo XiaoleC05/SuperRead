@@ -19,20 +19,10 @@ type settingsDTO struct {
 	UpdatedAt        string `json:"updated_at,omitempty"`
 }
 
-func maskAPIKey(key string) string {
-	if key == "" {
-		return ""
-	}
-	if len(key) <= 4 {
-		return "sk-...xxxx"
-	}
-	return "sk-..." + key[len(key)-4:]
-}
-
 func toSettingsDTO(s *model.UserSettings) settingsDTO {
 	return settingsDTO{
 		UserID:           s.UserID,
-		APIKey:           maskAPIKey(s.APIKey),
+		APIKey:           s.APIKey,
 		APIBase:          s.APIBase,
 		Model:            s.Model,
 		FetchIntervalMin: s.FetchIntervalMin,

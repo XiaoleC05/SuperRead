@@ -17,7 +17,17 @@ type statsResponse struct {
 	TokenTotal       int    `json:"token_total"`
 }
 
-// Stats GET /api/stats 鈥?杩斿洖鐢ㄦ埛 API Key 閰嶇疆鐘舵€佷笌鐢ㄩ噺缁熻
+func maskAPIKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	if len(key) <= 4 {
+		return "sk-...xxxx"
+	}
+	return "sk-..." + key[len(key)-4:]
+}
+
+// Stats GET /api/stats 返回用户 API Key 配置状态与用量统计
 func Stats(c *gin.Context) {
 	userID, ok := GetUserID(c)
 	if !ok {
