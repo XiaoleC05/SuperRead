@@ -360,7 +360,15 @@ func callLLM(ctx context.Context, settings *model.UserSettings, prompt string) (
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API error: %s", string(body))
+		var errResp struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(body, &errResp) == nil && errResp.Error.Message != "" {
+			return "", fmt.Errorf("LLM error: %s", errResp.Error.Message)
+		}
+		return "", fmt.Errorf("LLM returned status %d", resp.StatusCode)
 	}
 
 	var cr chatResp

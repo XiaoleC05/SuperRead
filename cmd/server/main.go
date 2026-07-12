@@ -176,7 +176,23 @@ func runMigrations() {
 			api_base TEXT DEFAULT '',
 			model TEXT DEFAULT 'gpt-4o-mini',
 			fetch_interval_min INT DEFAULT 30,
+			email TEXT DEFAULT '',
+			briefing_range TEXT DEFAULT '24h',
 			updated_at TIMESTAMPTZ DEFAULT NOW()
+		);
+
+		-- Ensure columns exist for databases created before these were added
+		ALTER TABLE superread.user_settings ADD COLUMN IF NOT EXISTS email TEXT DEFAULT '';
+		ALTER TABLE superread.user_settings ADD COLUMN IF NOT EXISTS briefing_range TEXT DEFAULT '24h';
+
+		CREATE TABLE IF NOT EXISTS superread.daily_briefs (
+			id BIGSERIAL PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			date DATE NOT NULL DEFAULT CURRENT_DATE,
+			content TEXT NOT NULL DEFAULT '',
+			article_ids BIGINT[] DEFAULT '{}',
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			UNIQUE(user_id, date)
 		);
 	`
 
