@@ -134,29 +134,37 @@ func GenerateDailyBrief(c *gin.Context) {
 	now := time.Now().In(loc)
 	since := now.Add(-duration)
 
-	// 1. Get unsummarized articles in the time window
-	unsummarized, err := db.ListUnsummarizedArticles(c.Request.Context(), userID, since)
-	if err != nil {
-		respondInternalError(c, err)
-		return
-	}
+	force := c.Query("force") == "true"
 
-	// 2. Summarize each unsummarized article
-	s := summarizer.New()
-	for i := range unsummarized {
-		summary, err := s.Summarize(c.Request.Context(), settings, &unsummarized[i])
-		if err != nil {
-			log.Printf("GenerateDailyBrief: summarize article %d failed: %v", unsummarized[i].ID, err)
-			continue
+	var articles []model.Article
+	if force {
+		// Skip summarization, use already-summarized articles directly
+		articles, err = db.ListSummarizedArticles(c.Request.Context(), userID, since, now)
+	} else {
+		// 1. Get unsummarized articles in the time window
+		unsummarized, uerr := db.ListUnsummarizedArticles(c.Request.Context(), userID, since)
+		if uerr != nil {
+			respondInternalError(c, uerr)
+			return
 		}
-		if summary != "" {
-			db.UpdateArticleSummary(c.Request.Context(), unsummarized[i].ID, summary)
-			unsummarized[i].Summary = summary
-		}
-	}
 
-	// 3. Get all summarized articles in the time window
-	articles, err := db.ListSummarizedArticles(c.Request.Context(), userID, since, now)
+		// 2. Summarize each unsummarized article
+		s := summarizer.New()
+		for i := range unsummarized {
+			summary, serr := s.Summarize(c.Request.Context(), settings, &unsummarized[i])
+			if serr != nil {
+				log.Printf("GenerateDailyBrief: summarize article %d failed: %v", unsummarized[i].ID, serr)
+				continue
+			}
+			if summary != "" {
+				db.UpdateArticleSummary(c.Request.Context(), unsummarized[i].ID, summary)
+				unsummarized[i].Summary = summary
+			}
+		}
+
+		// 3. Get all summarized articles in the time window
+		articles, err = db.ListSummarizedArticles(c.Request.Context(), userID, since, now)
+	}
 	if err != nil {
 		respondInternalError(c, err)
 		return
