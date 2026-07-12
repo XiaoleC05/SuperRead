@@ -567,12 +567,12 @@ func ListDailyBriefs(c *gin.Context) {
 	items := []briefItem{}
 	for rows.Next() {
 		var (
-			dateStr    string
+			dateRaw    time.Time
 			content    string
 			articleIDs []int64
 			createdAt  time.Time
 		)
-		if err := rows.Scan(&dateStr, &content, &articleIDs, &createdAt); err != nil {
+		if err := rows.Scan(&dateRaw, &content, &articleIDs, &createdAt); err != nil {
 			log.Printf("scan brief: %v", err)
 			continue
 		}
@@ -583,7 +583,7 @@ func ListDailyBriefs(c *gin.Context) {
 		}
 
 		items = append(items, briefItem{
-			Date:         dateStr,
+			Date:         dateRaw.Format("2006-01-02"),
 			Content:      content,
 			Preview:      preview,
 			ArticleCount: len(articleIDs),
