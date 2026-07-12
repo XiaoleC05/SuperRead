@@ -116,58 +116,68 @@ func GenerateDailyBrief(c *gin.Context) {
 		return
 	}
 
-	// Parse range (default: from settings or 24h)
-	rangeStr := c.Query("range")
-	if rangeStr == "" {
-		rangeStr = settings.BriefingRange
-		if rangeStr == "" {
-			rangeStr = "24h"
-		}
-	}
-	duration, err := parseRange(rangeStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid range: " + err.Error()})
-		return
-	}
-
 	loc, _ := time.LoadLocation("Asia/Shanghai")
 	now := time.Now().In(loc)
-	since := now.Add(-duration)
-
-	force := c.Query("force") == "true"
 
 	var articles []model.Article
-	if force {
-		// Skip summarization, use already-summarized articles directly
-		articles, err = db.ListSummarizedArticles(c.Request.Context(), userID, since, now)
-	} else {
-		// 1. Get unsummarized articles in the time window
-		unsummarized, uerr := db.ListUnsummarizedArticles(c.Request.Context(), userID, since)
-		if uerr != nil {
-			respondInternalError(c, uerr)
+
+	// Check if specific article IDs are provided (?ids=1,2,3)
+	idsStr := c.Query("ids")
+	if idsStr != "" {
+		var ids []int64
+		for _, s := range strings.Split(idsStr, ",") {
+			if id, perr := strconv.ParseInt(strings.TrimSpace(s), 10, 64); perr == nil {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no valid article IDs"})
 			return
 		}
-
-		// 2. Summarize each unsummarized article
-		s := summarizer.New()
-		for i := range unsummarized {
-			summary, serr := s.Summarize(c.Request.Context(), settings, &unsummarized[i])
-			if serr != nil {
-				log.Printf("GenerateDailyBrief: summarize article %d failed: %v", unsummarized[i].ID, serr)
-				continue
-			}
-			if summary != "" {
-				db.UpdateArticleSummary(c.Request.Context(), unsummarized[i].ID, summary)
-				unsummarized[i].Summary = summary
+		articles = fetchArticlesByIDs(c.Request.Context(), userID, ids)
+	} else {
+		// Parse range (default: from settings or 24h)
+		rangeStr := c.Query("range")
+		if rangeStr == "" {
+			rangeStr = settings.BriefingRange
+			if rangeStr == "" {
+				rangeStr = "24h"
 			}
 		}
+		duration, rerr := parseRange(rangeStr)
+		if rerr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid range: " + rerr.Error()})
+			return
+		}
+		since := now.Add(-duration)
 
-		// 3. Get all summarized articles in the time window
-		articles, err = db.ListSummarizedArticles(c.Request.Context(), userID, since, now)
-	}
-	if err != nil {
-		respondInternalError(c, err)
-		return
+		force := c.Query("force") == "true"
+		if force {
+			articles, err = db.ListSummarizedArticles(c.Request.Context(), userID, since, now)
+		} else {
+			unsummarized, uerr := db.ListUnsummarizedArticles(c.Request.Context(), userID, since)
+			if uerr != nil {
+				respondInternalError(c, uerr)
+				return
+			}
+			s := summarizer.New()
+			for i := range unsummarized {
+				summary, serr := s.Summarize(c.Request.Context(), settings, &unsummarized[i])
+				if serr != nil {
+					log.Printf("GenerateDailyBrief: summarize article %d failed: %v", unsummarized[i].ID, serr)
+					continue
+				}
+				if summary != "" {
+					db.UpdateArticleSummary(c.Request.Context(), unsummarized[i].ID, summary)
+					unsummarized[i].Summary = summary
+				}
+			}
+			articles, err = db.ListSummarizedArticles(c.Request.Context(), userID, since, now)
+		}
+		if err != nil {
+			respondInternalError(c, err)
+			return
+		}
 	}
 
 	if len(articles) == 0 {
@@ -313,6 +323,44 @@ func fetchBriefArticles(c *gin.Context, userID int64, articleIDs []int64) []Brie
 	return result
 }
 
+func fetchArticlesByIDs(ctx context.Context, userID int64, ids []int64) []model.Article {
+	if len(ids) == 0 {
+		return nil
+	}
+	idStrs := make([]string, len(ids))
+	for i, id := range ids {
+		idStrs[i] = strconv.FormatInt(id, 10)
+	}
+	query := fmt.Sprintf(
+		`SELECT a.id, a.feed_id, a.title, a.url, a.author, a.published_at,
+		        a.content_text, a.summary, a.is_read, a.is_starred, a.tag,
+		        a.guid, a.created_at, f.title as feed_title
+		 FROM superread.articles a
+		 JOIN superread.feeds f ON a.feed_id = f.id
+		 WHERE f.user_id = $1 AND a.id IN (%s)
+		 ORDER BY a.published_at DESC`,
+		strings.Join(idStrs, ","),
+	)
+	rows, err := db.Pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var articles []model.Article
+	for rows.Next() {
+		var a model.Article
+		if err := rows.Scan(
+			&a.ID, &a.FeedID, &a.Title, &a.URL, &a.Author, &a.PublishedAt,
+			&a.ContentText, &a.Summary, &a.IsRead, &a.IsStarred, &a.Tag,
+			&a.GUID, &a.CreatedAt, &a.FeedTitle,
+		); err != nil {
+			continue
+		}
+		articles = append(articles, a)
+	}
+	return articles
+}
 func callLLM(ctx context.Context, settings *model.UserSettings, prompt string) (string, error) {
 	if err := llm.ValidateAPIBase(settings.APIBase); err != nil {
 		return "", fmt.Errorf("invalid api base: %w", err)
@@ -346,8 +394,11 @@ func callLLM(ctx context.Context, settings *model.UserSettings, prompt string) (
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
+	callCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+
 	apiURL := strings.TrimSuffix(settings.APIBase, "/") + "/v1/chat/completions"
-	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(jsonData))
+	req, err := http.NewRequestWithContext(callCtx, "POST", apiURL, bytes.NewReader(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}
@@ -355,12 +406,15 @@ func callLLM(ctx context.Context, settings *model.UserSettings, prompt string) (
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+settings.APIKey)
 
-	client := &http.Client{Timeout: 90 * time.Second}
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	llmStart := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("send request: %w", err)
 	}
 	defer resp.Body.Close()
+	log.Printf("callLLM: LLM response took %v", time.Since(llmStart))
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
