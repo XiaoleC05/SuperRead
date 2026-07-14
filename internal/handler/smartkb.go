@@ -47,16 +47,6 @@ func SmartKBIngest(c *gin.Context) {
 			continue
 		}
 
-		texts := make([]string, len(chunks))
-		for i, ch := range chunks {
-			texts[i] = ch.Content
-		}
-		embeddings, err := ingester.EmbedBatch(texts)
-		if err != nil {
-			log.Printf("SmartKB: embed %s failed: %v", filePath, err)
-			continue
-		}
-
 		title := filepath.Base(filePath)
 		docID, err := db.CreateOrGetDocument(c.Request.Context(), filePath, title)
 		if err != nil {
@@ -68,7 +58,7 @@ func SmartKBIngest(c *gin.Context) {
 			log.Printf("SmartKB: delete old chunks for %s failed: %v", filePath, err)
 		}
 
-		if err := db.InsertChunks(c.Request.Context(), docID, chunks, embeddings); err != nil {
+		if err := db.InsertChunks(c.Request.Context(), docID, chunks); err != nil {
 			log.Printf("SmartKB: insert chunks for %s failed: %v", filePath, err)
 			continue
 		}
@@ -102,13 +92,7 @@ func SmartKBSearch(c *gin.Context) {
 		}
 	}
 
-	queryVec, err := ingester.Embed(req.Query)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "embedding failed: " + err.Error()})
-		return
-	}
-
-	results, err := db.SearchChunks(c.Request.Context(), queryVec, limit)
+	results, err := db.SearchChunks(c.Request.Context(), req.Query, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed: " + err.Error()})
 		return
@@ -141,14 +125,8 @@ func SmartKBChat(c *gin.Context) {
 		return
 	}
 
-	// 1. Embed question and search top-5 chunks
-	queryVec, err := ingester.Embed(req.Query)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "embedding failed: " + err.Error()})
-		return
-	}
-
-	results, err := db.SearchChunks(c.Request.Context(), queryVec, 5)
+	// 1. Full-text search top-5 chunks
+	results, err := db.SearchChunks(c.Request.Context(), req.Query, 5)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed: " + err.Error()})
 		return
@@ -284,4 +262,3 @@ func SmartKBChat(c *gin.Context) {
 	fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
 	c.Writer.Flush()
 }
-

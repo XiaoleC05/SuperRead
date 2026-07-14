@@ -31,8 +31,8 @@ func DeleteChunksForDocument(ctx context.Context, docID int64) error {
 	return err
 }
 
-// InsertChunks inserts multiple chunks with embeddings in a single transaction.
-func InsertChunks(ctx context.Context, docID int64, chunks []ingester.Chunk, embeddings [][]float32) error {
+// InsertChunks inserts multiple chunks with auto-generated tsvector for full-text search.
+func InsertChunks(ctx context.Context, docID int64, chunks []ingester.Chunk) error {
 	tx, err := Pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -40,15 +40,10 @@ func InsertChunks(ctx context.Context, docID int64, chunks []ingester.Chunk, emb
 	defer tx.Rollback(ctx)
 
 	for i, chunk := range chunks {
-		var vecStr string
-		if i < len(embeddings) && len(embeddings[i]) > 0 {
-			vecStr = ingester.VectorString(embeddings[i])
-		}
-
 		_, err := tx.Exec(ctx,
-			`INSERT INTO smartkb.chunks (document_id, content, embedding, source_line)
-			 VALUES ($1, $2, $3::vector, $4)`,
-			docID, chunk.Content, vecStr, chunk.SourceLine,
+			`INSERT INTO smartkb.chunks (document_id, content, source_line, tsv)
+			 VALUES ($1, $2, $3, to_tsvector('simple', $2))`,
+			docID, chunk.Content, chunk.SourceLine,
 		)
 		if err != nil {
 			return fmt.Errorf("insert chunk %d: %w", i, err)
@@ -67,18 +62,17 @@ type ChunkResult struct {
 	Score      float64 `json:"score"`
 }
 
-// SearchChunks performs vector similarity search.
-func SearchChunks(ctx context.Context, queryVec []float32, limit int) ([]ChunkResult, error) {
-	vecStr := ingester.VectorString(queryVec)
-	query := `
+// SearchChunks performs PostgreSQL full-text search using plainto_tsquery and ts_rank.
+func SearchChunks(ctx context.Context, query string, limit int) ([]ChunkResult, error) {
+	rows, err := Pool.Query(ctx, `
 		SELECT c.id, c.content, d.source, c.source_line,
-		       1 - (c.embedding <=> $1::vector) as score
+		       ts_rank(c.tsv, plainto_tsquery('simple', $1)) as score
 		FROM smartkb.chunks c
 		JOIN smartkb.documents d ON c.document_id = d.id
-		ORDER BY c.embedding <=> $1::vector
+		WHERE c.tsv @@ plainto_tsquery('simple', $1)
+		ORDER BY score DESC
 		LIMIT $2
-	`
-	rows, err := Pool.Query(ctx, query, vecStr, limit)
+	`, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search chunks: %w", err)
 	}
