@@ -9,11 +9,36 @@ import (
 	"go/token"
 	"os"
 	"strings"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 type Chunk struct {
 	Content    string
 	SourceLine int
+}
+
+// readFileUTF8 reads a file and converts from GBK if not valid UTF-8.
+func readFileUTF8(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+
+	// Try UTF-8 first
+	if utf8.Valid(data) {
+		return string(data), nil
+	}
+
+	// Try GBK -> UTF-8
+	decoder := simplifiedchinese.GBK.NewDecoder()
+	utf8Data, err := decoder.Bytes(data)
+	if err != nil {
+		// Fallback: force valid UTF-8, dropping invalid bytes
+		return strings.ToValidUTF8(string(data), ""), nil
+	}
+	return string(utf8Data), nil
 }
 
 // ChunkMarkdown splits markdown by ## headers, <=1000 chars, 100 char overlap.
@@ -53,13 +78,13 @@ func ChunkMarkdown(content string) []Chunk {
 
 // ChunkGoSource parses Go file with go/parser, each func/method becomes a chunk.
 func ChunkGoSource(filePath string) ([]Chunk, error) {
-	src, err := os.ReadFile(filePath)
+	content, err := readFileUTF8(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
 	}
 
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, filePath, src, parser.ParseComments)
+	f, err := parser.ParseFile(fset, filePath, content, parser.ParseComments)
 	if err != nil {
 		return nil, fmt.Errorf("parse: %w", err)
 	}
@@ -96,11 +121,11 @@ func ChunkGoSource(filePath string) ([]Chunk, error) {
 // ChunkFile dispatches to the right chunker based on file extension.
 func ChunkFile(filePath string) ([]Chunk, error) {
 	if strings.HasSuffix(filePath, ".md") {
-		data, err := os.ReadFile(filePath)
+		content, err := readFileUTF8(filePath)
 		if err != nil {
 			return nil, err
 		}
-		return ChunkMarkdown(string(data)), nil
+		return ChunkMarkdown(content), nil
 	}
 	if strings.HasSuffix(filePath, ".go") {
 		return ChunkGoSource(filePath)
