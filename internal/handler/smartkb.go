@@ -88,7 +88,7 @@ func SmartKBIngest(c *gin.Context) {
 // SmartKBSearch POST /api/smartkb/search
 func SmartKBSearch(c *gin.Context) {
 	var req struct {
-		Q string `json:"q" binding:"required"`
+		Query string `json:"query" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -102,7 +102,7 @@ func SmartKBSearch(c *gin.Context) {
 		}
 	}
 
-	queryVec, err := ingester.Embed(req.Q)
+	queryVec, err := ingester.Embed(req.Query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "embedding failed: " + err.Error()})
 		return
@@ -115,7 +115,7 @@ func SmartKBSearch(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"query":   req.Q,
+		"query":   req.Query,
 		"results": results,
 		"total":   len(results),
 	})
@@ -134,7 +134,7 @@ func SmartKBStatus(c *gin.Context) {
 // SmartKBChat POST /api/smartkb/chat - SSE streaming RAG answer
 func SmartKBChat(c *gin.Context) {
 	var req struct {
-		Question string `json:"question" binding:"required"`
+		Query string `json:"query" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -142,7 +142,7 @@ func SmartKBChat(c *gin.Context) {
 	}
 
 	// 1. Embed question and search top-5 chunks
-	queryVec, err := ingester.Embed(req.Question)
+	queryVec, err := ingester.Embed(req.Query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "embedding failed: " + err.Error()})
 		return
@@ -193,7 +193,7 @@ func SmartKBChat(c *gin.Context) {
 		"model": chatModel,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": req.Question},
+			{"role": "user", "content": req.Query},
 		},
 		"stream": true,
 	}
